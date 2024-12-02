@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>木乃伊迷宫</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f4d03f;
+            font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            margin: 20px;
+        }
+        #gameBoard {
+            display: grid;
+            grid-template-columns: repeat(6, 50px);
+            grid-template-rows: repeat(6, 50px);
+            gap: 2px;
+            background-color: #8b4513;
+            padding: 2px;
+            border-radius: 4px;
+        }
+        .cell {
+            background-color: #f4d03f;
+            position: relative;
+        }
+        .wall-right {
+            border-right: 4px solid #8b4513;
+        }
+        .wall-bottom {
+            border-bottom: 4px solid #8b4513;
+        }
+        .player {
+            width: 40px;
+            height: 40px;
+            background-color: #2ecc71;
+            border-radius: 50%;
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            z-index: 2;
+        }
+        .mummy {
+            width: 40px;
+            height: 40px;
+            background-color: #e74c3c;
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            
+        }
+        .exit {
+            width: 40px;
+            height: 40px;
+            background-color: #3498db;
+            position: absolute;
+            top: 5px;
+            left: 5px;
+        }
+        #status {
+            margin: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        #controls {
+            margin: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: #3498db;
+            border: none;
+            color: white;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .instructions {
+            max-width: 400px;
+            margin: 20px;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>木乃伊迷宫</h1>
+    <div class="instructions">
+        <h3>游戏规则：</h3>
+        <ul>
+            <li>使用方向键或WASD移动探险家（绿色）</li>
+            <li>按空格键原地等待一回合</li>
+            <li>每回合你可以移动一格或原地等待</li>
+            <li>木乃伊（红色）每回合移动两格</li>
+            <li>到达蓝色出口获胜</li>
+            <li>被木乃伊抓住则失败</li>
+            <li>按R键重新开始</li>
+        </ul>
+    </div>
+    <div id="gameContainer">
+        <div id="gameBoard"></div>
+    </div>
+    <div id="status">准备开始...</div>
+    <div id="controls">
+        <button onclick="resetGame()">重新开始</button>
+    </div>
+
+    <script>
+        const ROWS = 6;
+        const COLS = 6;
+        let playerPos = { x: 0, y: 0 };
+        let mummyPos = { x: 4, y: 4 };
+        let exitPos = { x: 5, y: 2 };
+        let gameOver = false;
+
+        // 墙壁定义：[x, y, direction]，direction: 1为右墙，2为下墙
+        const walls = [
+            [1, 0, 1], [2, 0, 1],
+            [0, 1, 2], [2, 1, 2],
+            [1, 2, 1], [3, 2, 1],
+            [2, 3, 2], [4, 3, 2],
+            [1, 4, 1], [3, 4, 1]
+        ];
+
+        function initGame() {
+            const board = document.getElementById('gameBoard');
+            board.innerHTML = '';
+            
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    
+                    // 添加墙壁
+                    walls.forEach(([wx, wy, dir]) => {
+                        if (x === wx && y === wy) {
+                            if (dir === 1) cell.classList.add('wall-right');
+                            if (dir === 2) cell.classList.add('wall-bottom');
+                        }
+                    });
+                    
+                    board.appendChild(cell);
+                }
+            }
+            
+            updateGameState();
+        }
+
+        function updateGameState() {
+            // 清除所有动态元素
+            document.querySelectorAll('.player, .mummy, .exit').forEach(el => el.remove());
+            
+            // 添加玩家
+            const playerCell = document.getElementsByClassName('cell')[playerPos.y * COLS + playerPos.x];
+            const playerEl = document.createElement('div');
+            playerEl.className = 'player';
+            playerCell.appendChild(playerEl);
+            
+            // 添加木乃伊
+            const mummyCell = document.getElementsByClassName('cell')[mummyPos.y * COLS + mummyPos.x];
+            const mummyEl = document.createElement('div');
+            mummyEl.className = 'mummy';
+            mummyCell.appendChild(mummyEl);
+            
+            // 添加出口
+            const exitCell = document.getElementsByClassName('cell')[exitPos.y * COLS + exitPos.x];
+            const exitEl = document.createElement('div');
+            exitEl.className = 'exit';
+            exitCell.appendChild(exitEl);
+        }
+
+        function moveMummy() {
+            // 木乃伊移动两步
+            for (let step = 0; step < 2; step++) {
+                if (gameOver) return;
+
+                let dx = playerPos.x - mummyPos.x;
+                let dy = playerPos.y - mummyPos.y;
+                
+                // 优先水平移动
+                if (Math.abs(dx) > 0 && !isWallBetween(mummyPos, {x: mummyPos.x + Math.sign(dx), y: mummyPos.y})) {
+                    mummyPos.x += Math.sign(dx);
+                }
+                // 其次垂直移动
+                else if (Math.abs(dy) > 0 && !isWallBetween(mummyPos, {x: mummyPos.x, y: mummyPos.y + Math.sign(dy)})) {
+                                    mummyPos.y += Math.sign(dy);
+                }
+
+                // 检查是否抓到玩家
+                if (mummyPos.x === playerPos.x && mummyPos.y === playerPos.y) {
+                    gameOver = true;
+                    document.getElementById('status').textContent = '游戏结束 - 你被抓住了！';
+                    return;
+                }
+            }
+            updateGameState();
+        }
+
+        function isWallBetween(pos1, pos2) {
+            // 检查两个相邻位置之间是否有墙
+            if (pos1.x === pos2.x) {
+                // 垂直移动
+                const y = Math.min(pos1.y, pos2.y);
+                return walls.some(([wx, wy, dir]) => wx === pos1.x && wy === y && dir === 2);
+            } else {
+                // 水平移动
+                const x = Math.min(pos1.x, pos2.x);
+                return walls.some(([wx, wy, dir]) => wx === x && wy === pos1.y && dir === 1);
+            }
+        }
+
+        function movePlayer(dx, dy) {
+            if (gameOver) return;
+            
+            // 原地等待的情况
+            if (dx === 0 && dy === 0) {
+                document.getElementById('status').textContent = '你选择原地等待...';
+                moveMummy();
+                return;
+            }
+            
+            const newX = playerPos.x + dx;
+            const newY = playerPos.y + dy;
+            
+            // 检查是否在边界内且没有墙
+            if (newX >= 0 && newX < COLS && newY >= 0 && newY < ROWS && 
+                !isWallBetween(playerPos, {x: newX, y: newY})) {
+                playerPos.x = newX;
+                playerPos.y = newY;
+                
+                // 检查是否到达出口
+                if (playerPos.x === exitPos.x && playerPos.y === exitPos.y) {
+                    gameOver = true;
+                    document.getElementById('status').textContent = '恭喜你赢了！';
+                    return;
+                }
+                
+                updateGameState();
+                moveMummy();
+            }
+        }
+
+        function resetGame() {
+            playerPos = { x: 0, y: 0 };
+            mummyPos = { x: 4, y: 4 };
+            gameOver = false;
+            document.getElementById('status').textContent = '游戏进行中...';
+            initGame();
+        }
+
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    movePlayer(0, -1);
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    movePlayer(0, 1);
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    movePlayer(-1, 0);
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    movePlayer(1, 0);
+                    break;
+                case ' ':
+                    movePlayer(0, 0); // 原地等待
+                    break;
+                case 'r':
+                case 'R':
+                    resetGame();
+                    break;
+            }
+        });
+
+        // 初始化游戏
+        initGame();
+    </script>
+</body>
+</html>
