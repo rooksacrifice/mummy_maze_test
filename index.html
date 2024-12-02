@@ -23,6 +23,7 @@
             background-color: #8b4513;
             padding: 2px;
             border-radius: 4px;
+            position: relative;
         }
         .cell {
             background-color: #f4d03f;
@@ -43,6 +44,7 @@
             top: 5px;
             left: 5px;
             z-index: 2;
+            transition: transform 0.3s ease;
         }
         .mummy {
             width: 40px;
@@ -52,6 +54,7 @@
             top: 5px;
             left: 5px;
             
+            transition: transform 0.3s ease;
         }
         .exit {
             width: 40px;
@@ -120,6 +123,7 @@
         let mummyPos = { x: 4, y: 4 };
         let exitPos = { x: 5, y: 2 };
         let gameOver = false;
+        let isMoving = false;
 
         // 墙壁定义：[x, y, direction]，direction: 1为右墙，2为下墙
         const walls = [
@@ -151,37 +155,39 @@
                 }
             }
             
-            updateGameState();
-        }
-
-        function updateGameState() {
-            // 清除所有动态元素
-            document.querySelectorAll('.player, .mummy, .exit').forEach(el => el.remove());
-            
-            // 添加玩家
-            const playerCell = document.getElementsByClassName('cell')[playerPos.y * COLS + playerPos.x];
-            const playerEl = document.createElement('div');
-            playerEl.className = 'player';
-            playerCell.appendChild(playerEl);
-            
-            // 添加木乃伊
-            const mummyCell = document.getElementsByClassName('cell')[mummyPos.y * COLS + mummyPos.x];
-            const mummyEl = document.createElement('div');
-            mummyEl.className = 'mummy';
-            mummyCell.appendChild(mummyEl);
-            
-            // 添加出口
+            // 添加出口（保持固定）
             const exitCell = document.getElementsByClassName('cell')[exitPos.y * COLS + exitPos.x];
             const exitEl = document.createElement('div');
             exitEl.className = 'exit';
             exitCell.appendChild(exitEl);
+
+            // 添加玩家和木乃伊（使用独立的元素以支持动画）
+            const playerEl = document.createElement('div');
+            playerEl.className = 'player';
+            playerEl.id = 'player';
+            document.getElementById('gameBoard').appendChild(playerEl);
+
+            const mummyEl = document.createElement('div');
+            mummyEl.className = 'mummy';
+            mummyEl.id = 'mummy';
+            document.getElementById('gameBoard').appendChild(mummyEl);
+
+            updatePositions();
         }
 
-        function moveMummy() {
-            // 木乃伊移动两步
-            for (let step = 0; step < 2; step++) {
-                if (gameOver) return;
+        function updatePositions() {
+            const player = document.getElementById('player');
+            const mummy = document.getElementById('mummy');
+            
+            player.style.transform = `translate(${playerPos.x * 52}px, ${playerPos.y * 52}px)`;
+            mummy.style.transform = `translate(${mummyPos.x * 52}px, ${mummyPos.y * 52}px)`;
+        }
 
+        async function moveMummy() {
+            if (gameOver) return;
+
+            // 木乃伊移动两步，每步都展示
+            for (let step = 0; step < 2; step++) {
                 let dx = playerPos.x - mummyPos.x;
                 let dy = playerPos.y - mummyPos.y;
                 
@@ -191,8 +197,12 @@
                 }
                 // 其次垂直移动
                 else if (Math.abs(dy) > 0 && !isWallBetween(mummyPos, {x: mummyPos.x, y: mummyPos.y + Math.sign(dy)})) {
-                                    mummyPos.y += Math.sign(dy);
+                    mummyPos.y += Math.sign(dy);
                 }
+
+                // 更新位置并等待动画完成
+                updatePositions();
+                await new Promise(resolve => setTimeout(resolve, 300));
 
                 // 检查是否抓到玩家
                 if (mummyPos.x === playerPos.x && mummyPos.y === playerPos.y) {
@@ -201,29 +211,27 @@
                     return;
                 }
             }
-            updateGameState();
         }
 
         function isWallBetween(pos1, pos2) {
-            // 检查两个相邻位置之间是否有墙
             if (pos1.x === pos2.x) {
-                // 垂直移动
                 const y = Math.min(pos1.y, pos2.y);
                 return walls.some(([wx, wy, dir]) => wx === pos1.x && wy === y && dir === 2);
             } else {
-                // 水平移动
                 const x = Math.min(pos1.x, pos2.x);
                 return walls.some(([wx, wy, dir]) => wx === x && wy === pos1.y && dir === 1);
             }
         }
 
-        function movePlayer(dx, dy) {
-            if (gameOver) return;
+        async function movePlayer(dx, dy) {
+            if (gameOver || isMoving) return;
+            isMoving = true;
             
             // 原地等待的情况
             if (dx === 0 && dy === 0) {
                 document.getElementById('status').textContent = '你选择原地等待...';
-                moveMummy();
+                await moveMummy();
+                isMoving = false;
                 return;
             }
             
@@ -236,28 +244,39 @@
                 playerPos.x = newX;
                 playerPos.y = newY;
                 
+                updatePositions();
+                
                 // 检查是否到达出口
                 if (playerPos.x === exitPos.x && playerPos.y === exitPos.y) {
                     gameOver = true;
                     document.getElementById('status').textContent = '恭喜你赢了！';
+                    isMoving = false;
                     return;
                 }
                 
-                updateGameState();
-                moveMummy();
+                await moveMummy();
             }
+            isMoving = false;
         }
 
         function resetGame() {
             playerPos = { x: 0, y: 0 };
             mummyPos = { x: 4, y: 4 };
             gameOver = false;
+            isMoving = false;
             document.getElementById('status').textContent = '游戏进行中...';
             initGame();
         }
 
-        // 键盘控制
+        // 防止空格键触发按钮
         document.addEventListener('keydown', (e) => {
+            if (e.key === ' ') {
+                e.preventDefault();
+            }
+        });
+
+        // 键盘控制
+        document.addEventListener('keyup', (e) => {
             switch(e.key) {
                 case 'ArrowUp':
                 case 'w':
